@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+
+set -e
+
+CONFIG="${HOME}/.ssh/config"
+
+if [ ! -f "$CONFIG" ]; then
+  echo "No SSH config found at $CONFIG"
+  exit 1
+fi
+
+# Get hosts (ignore wildcards like Host *)
+hosts=$(awk '/^Host / {print $2}' "$CONFIG" | grep -v '\*' | sort -u)
+
+if [ -z "$hosts" ]; then
+  echo "No SSH hosts found."
+  exit 1
+fi
+
+# Require gum
+if ! command -v gum >/dev/null 2>&1; then
+  echo "gum is required. Install with: brew install gum"
+  exit 1
+fi
+
+host=$(echo "$hosts" | gum choose --header "Select SSH host")
+
+if [ -z "$host" ]; then
+  exit 0
+fi
+
+ssh "$host"
