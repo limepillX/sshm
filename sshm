@@ -10,7 +10,7 @@ if [ ! -f "$CONFIG" ]; then
 fi
 
 # Get hosts (ignore wildcards like Host *)
-hosts=$(awk '/^Host / {print $2}' "$CONFIG" | grep -v '\*' | sort -u)
+hosts=$(awk '/^Host / {print $2}' "$CONFIG" | grep -v '\*')
 
 if [ -z "$hosts" ]; then
   echo "No SSH hosts found."
