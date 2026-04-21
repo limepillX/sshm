@@ -1,6 +1,7 @@
 # sshm
 
 Simple interactive SSH selector for `~/.ssh/config` using `gum`.
+<img width="809" height="540" alt="Interface demonstration" src="https://github.com/user-attachments/assets/6c8e77ca-064c-472c-bd1e-d73b07e04a18" />
 
 ## Requirements
 
@@ -11,10 +12,10 @@ Simple interactive SSH selector for `~/.ssh/config` using `gum`.
 ## Install
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/limepillX/sshm
 cd sshm
-chmod +x sshm
-sudo cp sshm /usr/local/bin/
+chmod +x install.sh
+./install.sh
 ```
 
 ## Usage
