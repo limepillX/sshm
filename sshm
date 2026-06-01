@@ -9,7 +9,6 @@ if [ ! -f "$CONFIG" ]; then
   exit 1
 fi
 
-# Get hosts (ignore wildcards like Host *)
 hosts=$(awk '/^Host / {print $2}' "$CONFIG" | grep -v '\*')
 
 if [ -z "$hosts" ]; then
@@ -17,16 +16,73 @@ if [ -z "$hosts" ]; then
   exit 1
 fi
 
-# Require gum
 if ! command -v gum >/dev/null 2>&1; then
   echo "gum is required. Install with: brew install gum"
   exit 1
 fi
 
-host=$(echo "$hosts" | gum choose --header "Select SSH host")
+BOLD='\033[1m'
+RESET='\033[0m'
+ESC=$'\033'
+RESULT=""
 
-if [ -z "$host" ]; then
-  exit 0
-fi
+show_menu() {
+  local prefix="$1"
+  local filter_prefix="${prefix:+${prefix}:}"
+  local relevant="${hosts}"
+  [[ -n "$filter_prefix" ]] && relevant=$(echo "$hosts" | awk -v p="$filter_prefix" 'substr($0,1,length(p))==p')
 
-ssh "$host"
+  local menu_items=()
+  local subcats=()
+  local remainder subcat found s
+
+  while IFS= read -r host; do
+    [[ -z "$host" ]] && continue
+    remainder="${host#${filter_prefix}}"
+    if [[ "$remainder" == *:* ]]; then
+      subcat="${remainder%%:*}"
+      found=0
+      for s in "${subcats[@]}"; do [[ "$s" == "$subcat" ]] && found=1 && break; done
+      [[ $found -eq 0 ]] && subcats+=("$subcat")
+    else
+      menu_items+=("$remainder")
+    fi
+  done <<< "$relevant"
+
+  for subcat in "${subcats[@]}"; do
+    menu_items+=("$(printf "${BOLD}▶ %s${RESET}" "$subcat")")
+  done
+  [[ -n "$prefix" ]] && menu_items+=("← Back")
+
+  local header
+  if [[ -n "$prefix" ]]; then
+    header="$(printf "${BOLD}%s${RESET}" "$prefix") — select host"
+  else
+    header="Select SSH host"
+  fi
+
+  while true; do
+    local selected
+    selected=$(printf '%s\n' "${menu_items[@]}" | gum choose --header "$header" || true)
+
+    [[ -z "$selected" || "$selected" == "← Back" ]] && RESULT="" && return 0
+
+    local clean
+    clean=$(printf '%s' "$selected" | sed "s/${ESC}\[[0-9;]*m//g")
+
+    if [[ "$clean" == "▶ "* ]]; then
+      local subcat="${clean#▶ }"
+      local new_prefix
+      [[ -n "$prefix" ]] && new_prefix="${prefix}:${subcat}" || new_prefix="$subcat"
+      show_menu "$new_prefix"
+      [[ -n "$RESULT" ]] && return 0
+    else
+      [[ -n "$prefix" ]] && RESULT="${prefix}:${selected}" || RESULT="$selected"
+      return 0
+    fi
+  done
+}
+
+show_menu ""
+[[ -z "$RESULT" ]] && exit 0
+ssh "$RESULT"
