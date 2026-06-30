@@ -9,13 +9,6 @@ if [ ! -f "$CONFIG" ]; then
   exit 1
 fi
 
-hosts=$(awk '/^Host / {print $2}' "$CONFIG" | grep -v '\*')
-
-if [ -z "$hosts" ]; then
-  echo "No SSH hosts found."
-  exit 1
-fi
-
 if ! command -v gum >/dev/null 2>&1; then
   echo "gum is required. Install with: brew install gum"
   exit 1
@@ -26,37 +19,70 @@ RESET='\033[0m'
 ESC=$'\033'
 RESULT=""
 
+# Host line format:
+#   Host name                      -> root-level host
+#   Host category name             -> host inside category
+#   Host category inner_cat name   -> host inside category > inner_cat
+# Last word is the SSH alias. Hosts whose last word starts with _ are hidden.
+HOSTS_DATA=$(awk '
+/^Host / {
+  count = NF - 1
+  if (count == 0) next
+  name = $NF
+  if (name ~ /\*/ || name ~ /^_/) next
+  cat   = (count >= 2) ? $2 : ""
+  inner = (count >= 3) ? $3 : ""
+  printf "%s|%s|%s\n", name, cat, inner
+}
+' "$CONFIG")
+
+if [[ -z "$HOSTS_DATA" ]]; then
+  echo "No SSH hosts found."
+  exit 1
+fi
+
 show_menu() {
-  local prefix="$1"
-  local filter_prefix="${prefix:+${prefix}:}"
-  local relevant="${hosts}"
-  [[ -n "$filter_prefix" ]] && relevant=$(echo "$hosts" | awk -v p="$filter_prefix" 'substr($0,1,length(p))==p')
+  local cat_filter="$1"
+  local inner_filter="$2"
 
   local menu_items=()
-  local subcats=()
-  local remainder subcat found s
+  local seen_subcats=()
+  local found s
 
-  while IFS= read -r host; do
+  while IFS='|' read -r host cat inner; do
     [[ -z "$host" ]] && continue
-    remainder="${host#${filter_prefix}}"
-    if [[ "$remainder" == *:* ]]; then
-      subcat="${remainder%%:*}"
-      found=0
-      for s in "${subcats[@]}"; do [[ "$s" == "$subcat" ]] && found=1 && break; done
-      [[ $found -eq 0 ]] && subcats+=("$subcat")
-    else
-      menu_items+=("$remainder")
-    fi
-  done <<< "$relevant"
 
-  for subcat in "${subcats[@]}"; do
-    menu_items+=("$(printf "${BOLD}▶ %s${RESET}" "$subcat")")
+    if [[ -z "$cat_filter" ]]; then
+      if [[ -n "$cat" ]]; then
+        found=0
+        for s in "${seen_subcats[@]}"; do [[ "$s" == "$cat" ]] && found=1 && break; done
+        [[ $found -eq 0 ]] && seen_subcats+=("$cat")
+      else
+        menu_items+=("$host")
+      fi
+    elif [[ "$cat" == "$cat_filter" && -z "$inner_filter" ]]; then
+      if [[ -n "$inner" ]]; then
+        found=0
+        for s in "${seen_subcats[@]}"; do [[ "$s" == "$inner" ]] && found=1 && break; done
+        [[ $found -eq 0 ]] && seen_subcats+=("$inner")
+      else
+        menu_items+=("$host")
+      fi
+    elif [[ "$cat" == "$cat_filter" && "$inner" == "$inner_filter" ]]; then
+      menu_items+=("$host")
+    fi
+  done <<< "$HOSTS_DATA"
+
+  for s in "${seen_subcats[@]}"; do
+    menu_items+=("$(printf "${BOLD}▶ %s${RESET}" "$s")")
   done
-  [[ -n "$prefix" ]] && menu_items+=("← Back")
+  [[ -n "$cat_filter" ]] && menu_items+=("← Back")
 
   local header
-  if [[ -n "$prefix" ]]; then
-    header="$(printf "${BOLD}%s${RESET}" "$prefix") — select host"
+  if [[ -n "$inner_filter" ]]; then
+    header="$(printf "${BOLD}%s › %s${RESET}" "$cat_filter" "$inner_filter")"
+  elif [[ -n "$cat_filter" ]]; then
+    header="$(printf "${BOLD}%s${RESET}" "$cat_filter") — select host"
   else
     header="Select SSH host"
   fi
@@ -71,18 +97,20 @@ show_menu() {
     clean=$(printf '%s' "$selected" | sed "s/${ESC}\[[0-9;]*m//g")
 
     if [[ "$clean" == "▶ "* ]]; then
-      local subcat="${clean#▶ }"
-      local new_prefix
-      [[ -n "$prefix" ]] && new_prefix="${prefix}:${subcat}" || new_prefix="$subcat"
-      show_menu "$new_prefix"
+      local subname="${clean#▶ }"
+      if [[ -z "$cat_filter" ]]; then
+        show_menu "$subname" ""
+      else
+        show_menu "$cat_filter" "$subname"
+      fi
       [[ -n "$RESULT" ]] && return 0
     else
-      [[ -n "$prefix" ]] && RESULT="${prefix}:${selected}" || RESULT="$selected"
+      RESULT="$clean"
       return 0
     fi
   done
 }
 
-show_menu ""
+show_menu "" ""
 [[ -z "$RESULT" ]] && exit 0
 ssh "$RESULT"

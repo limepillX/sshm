@@ -29,22 +29,29 @@ Navigate with arrow keys, select with Enter, exit with Escape.
 
 ## Categories
 
-Hosts named with `:` are grouped into categories. The part before `:` becomes the category name, nested categories are supported.
+Group hosts by adding category words before the host alias on the `Host` line. The last word is the SSH alias used to connect.
 
 ```
 # ~/.ssh/config
 Host bastion
-Host eu:prod:web-1
-Host eu:prod:db-1
-Host eu:staging:api
-Host us:prod:web-1
+Host eu prod web-1
+Host eu prod db-1
+Host eu staging api
+Host us prod web-1
 ```
 
 The first menu shows `bastion` alongside **`▶ eu`** and **`▶ us`**. Selecting a category opens a submenu. Use **← Back** to return to the previous level.
 
+Hosts whose alias starts with `_` are hidden from the menu but still usable directly via `ssh`.
+
+```
+Host _jump-box
+    HostName 10.0.0.1
+```
+
 ## How it works
 
-- Reads `Host` entries from `~/.ssh/config`, ignoring wildcards
-- Groups hosts with `:` in their name into nested categories
+- Reads `Host` entries from `~/.ssh/config`, ignoring wildcards and `_`-prefixed aliases
+- Groups hosts by the words preceding the last word on each `Host` line
 - Shows an interactive menu via `gum`
 - Runs `ssh <selected-host>`
